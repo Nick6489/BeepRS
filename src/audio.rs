@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
     Mutex,
-    atomic::{AtomicU32, Ordering},
+    atomic::{AtomicU64, Ordering},
 };
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -23,7 +23,16 @@ const BED: usize = 1;
 const INTRO: usize = 2;
 const DIE_FIRST: usize = 3;
 
-static DIE_CURSOR: AtomicU32 = AtomicU32::new(1);
+static DIE_ROLL: AtomicU64 = AtomicU64::new(0);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum After {
+    None,
+    /// Introduction finished: start the bed and the beep on the same sample.
+    Begin,
+    /// A death finished: the bed is already playing, so only the beep returns.
+    Beep,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Phase {
@@ -38,13 +47,12 @@ struct Voice {
     active: bool,
     looping: bool,
     gain: f32,
-    then_beep: bool,
+    after: After,
 }
 
 pub struct Audio {
     _stream: cpal::Stream,
     mixer: std::sync::Arc<Mutex<Mixer>>,
-    pub sounds_dir: PathBuf,
 }
 
 struct Mixer {
@@ -121,22 +129,22 @@ impl Audio {
         Ok(Self {
             _stream: stream,
             mixer,
-            sounds_dir,
         })
     }
 
     pub fn start_game(&self, intro: bool) {
         let mut mixer = lock(&self.mixer);
-        mixer.bed.restart();
         mixer.beep.active = false;
         mixer.shot.active = false;
-        mixer.shot.then_beep = false;
+        mixer.shot.after = After::None;
         if intro {
+            mixer.bed.active = false;
             mixer.shot.clip = INTRO;
             mixer.shot.gain = 0.95;
-            mixer.shot.then_beep = true;
+            mixer.shot.after = After::Begin;
             mixer.shot.restart();
         } else {
+            mixer.bed.restart();
             mixer.beep.restart();
         }
     }
@@ -146,7 +154,7 @@ impl Audio {
         mixer.bed.active = false;
         mixer.beep.active = false;
         mixer.shot.active = false;
-        mixer.shot.then_beep = false;
+        mixer.shot.after = After::None;
     }
 
     pub fn phase(&self) -> Phase {
@@ -170,11 +178,10 @@ impl Audio {
         if !mixer.beep.active {
             return false;
         }
-        let which = DIE_CURSOR.fetch_add(1, Ordering::Relaxed) as usize % 3;
         mixer.beep.active = false;
-        mixer.shot.clip = DIE_FIRST + which;
+        mixer.shot.clip = DIE_FIRST + random_die();
         mixer.shot.gain = 0.95;
-        mixer.shot.then_beep = true;
+        mixer.shot.after = After::Beep;
         mixer.shot.restart();
         true
     }
@@ -188,7 +195,7 @@ impl Voice {
             active: false,
             looping,
             gain,
-            then_beep: false,
+            after: After::None,
         }
     }
 
@@ -200,12 +207,22 @@ impl Voice {
 
 impl Mixer {
     fn frame(&mut self) -> [f32; 2] {
-        let bed = sample_voice(&self.clips, &mut self.bed);
         let shot = sample_voice(&self.clips, &mut self.shot);
-        if !self.shot.active && self.shot.then_beep {
-            self.shot.then_beep = false;
-            self.beep.restart();
+        if !self.shot.active {
+            match self.shot.after {
+                After::Begin => {
+                    self.shot.after = After::None;
+                    self.bed.restart();
+                    self.beep.restart();
+                }
+                After::Beep => {
+                    self.shot.after = After::None;
+                    self.beep.restart();
+                }
+                After::None => {}
+            }
         }
+        let bed = sample_voice(&self.clips, &mut self.bed);
         let beep = sample_voice(&self.clips, &mut self.beep);
         [
             (bed[0] + shot[0] + beep[0]).clamp(-1.0, 1.0),
@@ -256,6 +273,22 @@ fn fill(output: &mut [f32], channels: usize, mixer: &Mutex<Mixer>) {
             }
         }
     }
+}
+
+fn random_die() -> usize {
+    let mut state = DIE_ROLL.load(Ordering::Relaxed);
+    if state == 0 {
+        let seeded = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos() as u64)
+            .unwrap_or(0xA5A5_5A5A_1234_5678);
+        state = seeded | 1;
+    }
+    state ^= state << 13;
+    state ^= state >> 7;
+    state ^= state << 17;
+    DIE_ROLL.store(state, Ordering::Relaxed);
+    (state % 3) as usize
 }
 
 fn lock(mixer: &Mutex<Mixer>) -> std::sync::MutexGuard<'_, Mixer> {
@@ -414,5 +447,12 @@ mod tests {
             assert!(decoded.interleaved.len() > decoded.channels);
             assert!(decoded.rate >= 8_000);
         }
+    }
+
+    #[test]
+    fn death_sounds_are_not_taken_in_turn() {
+        let rolls: Vec<usize> = (0..40).map(|_| random_die()).collect();
+        assert_ne!(rolls, (0..40).map(|index| index % 3).collect::<Vec<_>>());
+        assert!(rolls.contains(&0) && rolls.contains(&1) && rolls.contains(&2));
     }
 }

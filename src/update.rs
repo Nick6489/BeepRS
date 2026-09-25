@@ -18,9 +18,9 @@ pub const CHANNEL: &str = "stable";
 pub const TARGET: &str = env!("BEEPRS_TARGET");
 pub const EXECUTABLE: &str = "beeprs.exe";
 
-/// Must match the signed zip exactly. Saves and `update-source.json` are absent
-/// on purpose: Freshen replaces this list and leaves every other file alone.
-/// Adding a path later requires a policy change in the already-shipped build.
+/// These paths must remain in every package. Freshen may also install new signed
+/// files strictly under `sounds/`. Saves and `update-source.json` are absent
+/// on purpose.
 pub const OWNED_FILES: &[&str] = &[
     EXECUTABLE,
     "sounds/beep.opus",
@@ -30,6 +30,10 @@ pub const OWNED_FILES: &[&str] = &[
     "sounds/die2.opus",
     "sounds/die3.opus",
 ];
+
+/// Host-owned directory. Later releases can add sound files here without a
+/// second migration. They still cannot remove an owned path or touch saves.
+pub const EXPANDABLE_DIRECTORIES: &[&str] = &["sounds"];
 
 /// Dev publisher key. The matching private key is `keys/publisher.key`, which is
 /// gitignored. Sign releases with that file; do not put it in a package.
@@ -176,10 +180,6 @@ pub fn missing_source_message(root: &Path) -> String {
     )
 }
 
-pub fn load_source(root: &Path) -> Result<LoadedSource, Box<dyn std::error::Error>> {
-    read_source(root)
-}
-
 pub fn find_release(
     loaded: &LoadedSource,
     cancel: &Cancellation,
@@ -225,18 +225,34 @@ pub fn install_release(
     root: &Path,
     prepared: freshen::PreparedUpdate,
 ) -> Result<freshen::Handoff, Box<dyn std::error::Error>> {
-    let policy = InstallPolicy::portable(
+    let policy = InstallPolicy::portable_expanding(
         root.to_path_buf(),
         EXECUTABLE.to_string(),
         OWNED_FILES.iter().map(|path| (*path).to_string()).collect(),
+        EXPANDABLE_DIRECTORIES
+            .iter()
+            .map(|path| (*path).to_string())
+            .collect(),
     );
     Ok(prepared.arm(policy, &std::env::current_exe()?, Vec::new())?)
 }
 
 #[derive(Clone)]
 pub enum LoadedSource {
+    GitHub,
     Directory(PathBuf),
     Manifest(Url, Url),
+}
+
+const GITHUB_OWNER: &str = "Nick6489";
+const GITHUB_REPOSITORY: &str = "BeepRS";
+
+pub fn load_source(root: &Path) -> Result<LoadedSource, Box<dyn std::error::Error>> {
+    let path = root.join("update-source.json");
+    if !path.is_file() {
+        return Ok(LoadedSource::GitHub);
+    }
+    read_source(root)
 }
 
 fn read_source(root: &Path) -> Result<LoadedSource, Box<dyn std::error::Error>> {
@@ -274,6 +290,14 @@ fn find_candidate(
     progress: &mut Progress<'_>,
 ) -> Result<Option<freshen::Candidate>, Box<dyn std::error::Error>> {
     match loaded {
+        LoadedSource::GitHub => {
+            let updater = updater(version, HttpTransport::new(Duration::from_secs(120))?)?;
+            let source = ReleaseSource::GitHub {
+                owner: GITHUB_OWNER.into(),
+                repository: GITHUB_REPOSITORY.into(),
+            };
+            Ok(updater.check(&source, cancel, &mut |event| progress.report(event))?)
+        }
         LoadedSource::Directory(directory) => {
             let updater = updater(
                 version,
@@ -304,6 +328,14 @@ fn prepare_candidate(
 ) -> Result<freshen::PreparedUpdate, Box<dyn std::error::Error>> {
     let temporary = std::env::temp_dir();
     match loaded {
+        LoadedSource::GitHub => {
+            let updater = updater(version, HttpTransport::new(Duration::from_secs(120))?)?;
+            Ok(
+                updater.prepare(candidate, &temporary, cancel, &mut |event| {
+                    progress.report(event)
+                })?,
+            )
+        }
         LoadedSource::Directory(directory) => {
             let updater = updater(
                 version,
@@ -473,6 +505,7 @@ mod tests {
         );
         assert!(OWNED_FILES.iter().all(|path| !path.contains("saves")));
         assert!(OWNED_FILES.iter().all(|path| *path != "update-source.json"));
+        assert_eq!(EXPANDABLE_DIRECTORIES, ["sounds"]);
     }
 
     #[test]

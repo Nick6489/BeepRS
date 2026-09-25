@@ -13,11 +13,19 @@ The menu is a dialog: a list, and buttons. New asks for a name. Play opens a win
 | Space | The beep stops, an alien dies, the score is written down, the beep returns. |
 | Esc | The game window closes and the menu comes back. |
 
-A new game plays `intro.opus` first. That file is the instruction manual. Space waits until the introduction finishes. A saved game skips the lecture. `bed.opus` plays under everything, because silence between beeps sounds like a crash.
+A new game plays `intro.opus` by itself. That file is the instruction manual. Space waits until it finishes, and then `bed.opus` and the beep start together. A saved game skips the lecture and starts with the bed and the beep.
+
+## Download
+
+The Windows build is a zip. Unzip it and run `beeprs.exe`. There is no installer. An installer would be a second program, and this one is already doing enough.
+
+[BeepRS 1.0 for Windows](https://github.com/Nick6489/BeepRS/releases/tag/v1.0.0)
 
 ## What an update is allowed to replace
 
-Freshen will replace these files and nothing else. The list is exact. A future zip that invents a fourth death sound will be shown the door until this program is changed to expect it.
+These seven files are permanent residents. Every later package has to bring them. The updater cannot fire one.
+
+It may bring friends, if they stand in the `sounds/` hallway. A fourth death, a ruder beep, a longer lecture: a signed file under `sounds/` is welcome, and version 1.0 will install it. A file in the lobby, or a hand in the saves drawer, is still shown out.
 
 | File | Role |
 | --- | --- |
@@ -40,9 +48,11 @@ These live beside the program and are not in the signed package:
 
 ## Checking for an update
 
-The Update button runs Freshen on a worker thread. The dialog stays alive while that happens, which is the entire reason this program has a window.
+Update asks GitHub, specifically the releases of this repository, for a signed stable release newer than the one you are running. The dialog stays up while that happens. That is why the dialog exists.
 
-If `update-source.json` is missing, the dialog tells you how to write one. Two shapes work:
+`update-source.json`, beside the program, is optional. It is kept when the program updates. If it is there, it overrides GitHub. That file is for packing a test release on a desk.
+
+Two shapes work:
 
 ```json
 {"type":"directory","path":"C:\\path\\to\\release"}

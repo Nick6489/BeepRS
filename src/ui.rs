@@ -57,14 +57,7 @@ pub fn run(
         tell(std::ptr::null_mut(), &report.lines.join("\n"));
     }
     let games = library.list()?;
-    let summary = format!(
-        "BeepRS {} ({}).\r\nSounds: {}\r\nScores in {} are kept.",
-        env!("CARGO_PKG_VERSION"),
-        update::TARGET,
-        audio.sounds_dir.display(),
-        root.join("saves").display()
-    );
-    let template = dialog::main_menu(&summary);
+    let template = dialog::main_menu();
     let installed = Arc::new(Mutex::new(None));
     let shell = Box::new(Shell {
         root,
@@ -528,14 +521,13 @@ struct UpdateState {
 }
 
 fn update_dialog(owner: HWND, root: &std::path::Path) -> Option<freshen::Handoff> {
-    if !root.join("update-source.json").is_file() {
-        tell(owner, &update::missing_source_message(root));
-        return None;
-    }
     let loaded = match update::load_source(root) {
         Ok(loaded) => loaded,
         Err(error) => {
-            tell(owner, &error.to_string());
+            tell(
+                owner,
+                &format!("{error}\r\n\r\n{}", update::missing_source_message(root)),
+            );
             return None;
         }
     };
@@ -713,7 +705,7 @@ fn pump_update(hwnd: HWND) {
                     state.text.push_str(&notes);
                 }
                 state.text.push_str(
-                    "\r\n\r\nInstall replaces beeprs.exe, the beep, the bed, the introduction, and the three death sounds. Saved games stay.",
+                    "\r\n\r\nInstall replaces the program and the sounds. Saved games stay.",
                 );
                 set_status(hwnd, &state.text);
                 unsafe { EnableWindow(GetDlgItem(hwnd, i32::from(ID_INSTALL)), 1) };

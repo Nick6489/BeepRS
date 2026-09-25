@@ -27,14 +27,12 @@ const ES_AUTOVSCROLL: u32 = 0x0040;
 const LBS_NOTIFY: u32 = 0x0001;
 const LBS_NOINTEGRALHEIGHT: u32 = 0x0100;
 const SS_NOPREFIX: u32 = 0x0080;
-const SS_EDITCONTROL: u32 = 0x2000;
 
 pub const ID_LIST: u16 = 100;
 pub const ID_NEW: u16 = 101;
 pub const ID_PLAY: u16 = 102;
 pub const ID_UPDATE: u16 = 103;
 pub const ID_QUIT: u16 = 104;
-pub const ID_INFO: u16 = 105;
 pub const ID_NAME: u16 = 110;
 pub const ID_STATUS: u16 = 120;
 pub const ID_INSTALL: u16 = 121;
@@ -133,51 +131,31 @@ impl Template {
     }
 }
 
-pub fn main_menu(summary: &str) -> Vec<u8> {
-    let mut dialog = Template::dialog("BeepRS", 312, 220);
-    dialog.item(
-        STATIC,
-        summary,
-        ID_INFO,
-        8,
-        6,
-        296,
-        40,
-        SS_NOPREFIX | SS_EDITCONTROL,
-    );
+pub fn main_menu() -> Vec<u8> {
+    let mut dialog = Template::dialog("BeepRS", 312, 148);
     dialog.item(
         LISTBOX,
         "",
         ID_LIST,
         8,
-        50,
+        8,
         296,
-        96,
+        104,
         WS_TABSTOP | WS_BORDER | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT,
     );
-    dialog.item(BUTTON, "&New", ID_NEW, 8, 154, 70, 16, WS_TABSTOP);
+    dialog.item(BUTTON, "&New", ID_NEW, 8, 120, 70, 16, WS_TABSTOP);
     dialog.item(
         BUTTON,
         "&Play",
         ID_PLAY,
         84,
-        154,
+        120,
         70,
         16,
         WS_TABSTOP | BS_DEFPUSHBUTTON,
     );
-    dialog.item(BUTTON, "&Update", ID_UPDATE, 160, 154, 70, 16, WS_TABSTOP);
-    dialog.item(BUTTON, "&Quit", ID_QUIT, 236, 154, 68, 16, WS_TABSTOP);
-    dialog.item(
-        STATIC,
-        "Space destroys the alien. Esc leaves the game.",
-        106,
-        8,
-        178,
-        296,
-        16,
-        SS_NOPREFIX,
-    );
+    dialog.item(BUTTON, "&Update", ID_UPDATE, 160, 120, 70, 16, WS_TABSTOP);
+    dialog.item(BUTTON, "&Quit", ID_QUIT, 236, 120, 68, 16, WS_TABSTOP);
     dialog.bytes()
 }
 
