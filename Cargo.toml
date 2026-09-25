@@ -1,0 +1,34 @@
+[package]
+name = "beeprs"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Minimal Windows audio game used to exercise Freshen updates"
+publish = false
+
+[dependencies]
+cpal = "0.16"
+freshen = { path = "../freshen" }
+semver = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+symphonia = { version = "0.5", default-features = false, features = ["ogg"] }
+symphonia-adapter-libopus = "0.2"
+url = { version = "2", features = ["serde"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+base64 = "0.22"
+ed25519-dalek = "2.2"
+tempfile = "3"
