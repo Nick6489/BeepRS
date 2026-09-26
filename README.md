@@ -2,7 +2,7 @@
 
 Beep, the audio game Liam Erven made small enough to explain in one sentence, now wearing a Windows dialog box and an updater with a clipboard.
 
-A beep plays until you press Space. One of three death sounds plays. The beep comes back. There is no timer, no score attack, and no plot. The score is how many aliens you have removed from the premises, and it is saved, because the updater is not allowed to eat it.
+A beep plays until you press Space. One of six death sounds plays. The beep comes back. There is no timer, no score attack, and no plot. The score is how many aliens you have removed from the premises, and it is saved, because the updater is not allowed to eat it. The count is on the menu when you come back. The play window does not repeat it.
 
 ## Play
 
@@ -19,13 +19,13 @@ A new game plays `intro.opus` by itself. That file is the instruction manual. Sp
 
 The Windows build is a zip. Unzip it and run `beeprs.exe`. There is no installer. An installer would be a second program, and this one is already doing enough.
 
-[BeepRS 1.0 for Windows](https://github.com/Nick6489/BeepRS/releases/tag/v1.0.0)
+[BeepRS 1.0.1 for Windows](https://github.com/Nick6489/BeepRS/releases/tag/v1.0.1)
 
 ## What an update is allowed to replace
 
-These seven files are permanent residents. Every later package has to bring them. The updater cannot fire one.
+These ten files are permanent residents. Every later package has to bring them. The updater cannot fire one.
 
-It may bring friends, if they stand in the `sounds/` hallway. A fourth death, a ruder beep, a longer lecture: a signed file under `sounds/` is welcome, and version 1.0 will install it. A file in the lobby, or a hand in the saves drawer, is still shown out.
+It may bring friends, if they stand in the `sounds/` hallway. A seventh death, a ruder beep, a longer lecture: a signed file under `sounds/` is welcome, and version 1.0 will install it. A file in the lobby, or a hand in the saves drawer, is still shown out.
 
 | File | Role |
 | --- | --- |
@@ -36,6 +36,9 @@ It may bring friends, if they stand in the `sounds/` hallway. A fourth death, a 
 | `sounds/die1.opus` | A death. |
 | `sounds/die2.opus` | Another death. |
 | `sounds/die3.opus` | A third death, for variety, or for spite. |
+| `sounds/die4.opus` | A fourth death. |
+| `sounds/die5.opus` | A fifth death. |
+| `sounds/die6.opus` | A sixth death. |
 
 The sounds are Opus because WAV was hauling around a lot of silence.
 
@@ -64,7 +67,7 @@ Two shapes work:
 
 A directory release contains `freshen-manifest.json`, `freshen-manifest.json.sig`, and the zip. The zip's file name is the last part of the URL stored in the manifest.
 
-This build calls itself `beeprs`, version `1.0.0`, channel `stable`, target `x86_64-pc-windows-msvc` when built with the usual Windows toolchain. The target string in the dialog is the one the binary was actually built for. Pack with that string, not with a guess.
+This build calls itself `beeprs`, version `1.0.1`, channel `stable`, target `x86_64-pc-windows-msvc` when built with the usual Windows toolchain. The target string in the dialog is the one the binary was actually built for. Pack with that string, not with a guess.
 
 The publisher public key is compiled in. The private key is `keys/publisher.key` on the machine that signs releases, and it is not in this repository. If you came here looking for it, the door is that way.
 

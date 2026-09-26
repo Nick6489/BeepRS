@@ -9,12 +9,13 @@ use std::sync::{Arc, Mutex};
 use freshen::Cancellation;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    BeginPaint, CLEARTYPE_QUALITY, CreateFontW, DEFAULT_GUI_FONT, DT_LEFT, DT_WORDBREAK,
-    DeleteObject, DrawTextW, EndPaint, FW_NORMAL, GetStockObject, HFONT, PAINTSTRUCT, SelectObject,
+    BeginPaint, CLEARTYPE_QUALITY, COLOR_WINDOW, CreateFontW, DEFAULT_GUI_FONT, DT_LEFT,
+    DT_WORDBREAK, DeleteObject, DrawTextW, EndPaint, FW_NORMAL, FillRect, GetStockObject,
+    GetSysColorBrush, HFONT, PAINTSTRUCT, SelectObject, SetBkMode, TRANSPARENT,
 };
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::Controls::EM_SETLIMITTEXT;
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, SetFocus};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled, SetFocus};
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, CreateDialogIndirectParamW, CreateWindowExW,
     DefWindowProcW, DestroyWindow, DialogBoxIndirectParamW, DispatchMessageW, EndDialog, GW_OWNER,
@@ -36,6 +37,7 @@ use crate::update::{self, StartupReport};
 
 const PLAY_TIMER: usize = 1;
 const UPDATE_TIMER: usize = 2;
+const AUDIO_TIMER: usize = 3;
 const VK_ESCAPE: u16 = 0x1B;
 const VK_SPACE: u16 = 0x20;
 
@@ -105,6 +107,7 @@ unsafe extern "system" fn main_proc(
     match message {
         WM_INITDIALOG => {
             SetWindowLongPtrW(hwnd, GWLP_USERDATA, lparam);
+            SetTimer(hwnd, AUDIO_TIMER, 200, None);
             if let Some(shell) = shell_from(hwnd) {
                 fill_list(hwnd, &shell.games);
             }
@@ -139,11 +142,25 @@ unsafe extern "system" fn main_proc(
             }
             1
         }
+        WM_TIMER if wparam == AUDIO_TIMER => {
+            if IsWindowEnabled(hwnd) != 0
+                && let Some(shell) = shell_from(hwnd)
+                && let Some(error) = shell.audio.take_error()
+            {
+                shell.audio.stop();
+                tell(
+                    hwnd,
+                    &format!("{error}\n\nAudio has stopped. Please restart BeepRS to try again."),
+                );
+            }
+            1
+        }
         WM_CLOSE => {
             DestroyWindow(hwnd);
             1
         }
         WM_DESTROY => {
+            KillTimer(hwnd, AUDIO_TIMER);
             let shell = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *mut Shell;
             if !shell.is_null() {
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
@@ -196,7 +213,10 @@ fn open_play(hwnd: HWND, game: Game, intro: bool) {
     };
     let audio = &shell.audio as *const Audio;
     let library = &shell.library as *const Library;
-    unsafe { (*audio).start_game(intro) };
+    if let Err(error) = unsafe { (*audio).start_game(intro) } {
+        tell(hwnd, &error.to_string());
+        return;
+    }
     let session = Box::new(Session {
         audio,
         library,
@@ -219,12 +239,10 @@ fn open_play(hwnd: HWND, game: Game, intro: bool) {
                 wide("Segoe UI").as_ptr(),
             )
         },
+        shown: if intro { Phase::Intro } else { Phase::Playing },
     });
     register_play_class();
-    let title = wide(&window_title(
-        &session.game,
-        if intro { Phase::Intro } else { Phase::Playing },
-    ));
+    let title = wide(&session.game.name);
     let class = wide("BeepRSPlay");
     let session_ptr = Box::into_raw(session);
     let play = unsafe {
@@ -285,10 +303,28 @@ unsafe extern "system" fn play_proc(
         }
         WM_TIMER => {
             if let Some(session) = session_from(hwnd) {
-                let phase = unsafe { (*session.audio).phase() };
-                let title = wide(&window_title(&session.game, phase));
-                SetWindowTextW(hwnd, title.as_ptr());
-                windows_sys::Win32::Graphics::Gdi::InvalidateRect(hwnd, std::ptr::null(), 1);
+                if let Some(error) = (*session.audio).take_error() {
+                    let owner = GetWindow(hwnd, GW_OWNER);
+                    DestroyWindow(hwnd);
+                    tell(
+                        owner,
+                        &format!(
+                            "{error}\n\nAudio has stopped. Please restart BeepRS to try again."
+                        ),
+                    );
+                    return 0;
+                }
+                // Repaint only when the introduction ends. A kill changes no
+                // visible text, so the title stays put and is not announced again.
+                let phase = (*session.audio).phase();
+                let display = match phase {
+                    Phase::Intro => Phase::Intro,
+                    Phase::Playing | Phase::Dying => Phase::Playing,
+                };
+                if display != session.shown {
+                    session.shown = display;
+                    windows_sys::Win32::Graphics::Gdi::InvalidateRect(hwnd, std::ptr::null(), 0);
+                }
             }
             0
         }
@@ -344,58 +380,41 @@ fn destroy_alien(hwnd: HWND) {
         return;
     }
     session.game.aliens_destroyed = next;
-    let title = wide(&window_title(&session.game, Phase::Dying));
-    unsafe {
-        SetWindowTextW(hwnd, title.as_ptr());
-        windows_sys::Win32::Graphics::Gdi::InvalidateRect(hwnd, std::ptr::null(), 1);
-    }
 }
 
 fn paint_play(hwnd: HWND) {
     let Some(session) = session_from(hwnd) else {
         return;
     };
-    let phase = unsafe { (*session.audio).phase() };
-    let text = wide(&match phase {
+    let text = wide(&match session.shown {
         Phase::Intro => format!(
             "{}\n\nThe introduction is playing.\nSpace starts working when it finishes.\nEsc returns to the menu.",
             session.game.name
         ),
-        Phase::Dying => format!(
-            "{}\n{} aliens destroyed.\n\nSpace destroys the alien. There is no time limit.\nEsc returns to the menu.",
-            session.game.name, session.game.aliens_destroyed
-        ),
-        Phase::Playing => format!(
-            "{}\n{} aliens destroyed.\n\nSpace destroys the alien. There is no time limit.\nEsc returns to the menu.",
-            session.game.name, session.game.aliens_destroyed
+        Phase::Dying | Phase::Playing => format!(
+            "{}\n\nSpace destroys the alien. There is no time limit.\nEsc returns to the menu.",
+            session.game.name
         ),
     });
     unsafe {
         let mut paint = PAINTSTRUCT::default();
         let dc = BeginPaint(hwnd, &mut paint);
+        let mut client = RECT::default();
+        GetClientRect(hwnd, &mut client);
+        FillRect(dc, &client, GetSysColorBrush(COLOR_WINDOW));
         let font = if session.font.is_null() {
             GetStockObject(DEFAULT_GUI_FONT)
         } else {
             session.font as _
         };
         SelectObject(dc, font);
-        let mut rect = RECT::default();
-        GetClientRect(hwnd, &mut rect);
-        rect.left += 24;
-        rect.top += 24;
-        rect.right -= 24;
-        rect.bottom -= 16;
-        DrawTextW(dc, text.as_ptr(), -1, &mut rect, DT_LEFT | DT_WORDBREAK);
+        SetBkMode(dc, TRANSPARENT as i32);
+        client.left += 24;
+        client.top += 24;
+        client.right -= 24;
+        client.bottom -= 16;
+        DrawTextW(dc, text.as_ptr(), -1, &mut client, DT_LEFT | DT_WORDBREAK);
         EndPaint(hwnd, &paint);
-    }
-}
-
-fn window_title(game: &Game, phase: Phase) -> String {
-    match phase {
-        Phase::Intro => format!("{} — introduction", game.name),
-        Phase::Dying | Phase::Playing => {
-            format!("{} — {} aliens", game.name, game.aliens_destroyed)
-        }
     }
 }
 
@@ -404,6 +423,8 @@ struct Session {
     library: *const Library,
     game: Game,
     font: HFONT,
+    /// Intro, or play. Death uses the play text so a kill does not repaint.
+    shown: Phase,
 }
 
 fn session_from(hwnd: HWND) -> Option<&'static mut Session> {

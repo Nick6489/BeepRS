@@ -11,6 +11,9 @@ fn main() {
         "die1.opus",
         "die2.opus",
         "die3.opus",
+        "die4.opus",
+        "die5.opus",
+        "die6.opus",
     ];
     for name in sounds {
         println!("cargo:rerun-if-changed=sounds/{name}");
