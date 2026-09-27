@@ -206,15 +206,15 @@ pub fn update_prompt() -> Vec<u8> {
     );
     dialog.item(
         BUTTON,
-        "&Install and quit",
+        "&Install and restart",
         ID_INSTALL,
         8,
         166,
-        110,
+        148,
         16,
         WS_TABSTOP,
     );
-    dialog.item(BUTTON, "&Close", IDCANCEL, 126, 166, 70, 16, WS_TABSTOP);
+    dialog.item(BUTTON, "&Close", IDCANCEL, 164, 166, 70, 16, WS_TABSTOP);
     dialog.bytes()
 }
 

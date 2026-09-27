@@ -57,6 +57,11 @@ impl StreamFailure {
     }
 }
 
+pub(super) struct OpusInfo {
+    pub(super) frames: u64,
+    pub(super) rate: u32,
+}
+
 pub(super) struct OpusFile {
     path: PathBuf,
     format: Box<dyn FormatReader>,
@@ -188,17 +193,20 @@ impl OpusFile {
         Ok(Some([left, right]))
     }
 
-    pub(super) fn validate(path: &Path) -> AudioResult<u64> {
+    pub(super) fn validate(path: &Path) -> AudioResult<OpusInfo> {
         let mut file = Self::open(path)?;
         while file.next_frame()?.is_some() {}
-        Ok(file.frames)
+        Ok(OpusInfo {
+            frames: file.frames,
+            rate: file.rate,
+        })
     }
 }
 
 /// BeepRS assets are single-stream Ogg Opus files. Check page checksums,
 /// sequence continuity and complete pages with at most one page in memory.
-/// Legacy shipped assets omit EOS; for those, EOF at a complete page boundary
-/// is accepted and the last granule supplies the intended sample count.
+/// The last granule is the intended sample count. An EOS page ends the file.
+/// Older assets omit EOS; EOF on a complete page is that same ending.
 fn validate_container(file: &mut File) -> AudioResult<u64> {
     let mut serial = None;
     let mut sequence = 0u32;
@@ -404,17 +412,24 @@ mod tests {
 
     #[test]
     fn loops_without_inserting_or_dropping_frames() {
-        let path = sound("beep.opus");
-        let decoded = decode_opus_file(&path).unwrap();
-        let reference = to_device(&decoded, decoded.rate);
-        let mut source = MusicSource::open(&path, decoded.rate).unwrap();
-        let mut block = [[0.0; 2]; 137];
-        let mut index = 0;
-        while index < reference.len() * 2 + 100 {
-            source.fill(&mut block).unwrap();
-            for frame in block {
-                assert_eq!(frame, reference[index % reference.len()]);
-                index += 1;
+        for name in ["beep.opus", "bed.opus"] {
+            let path = sound(name);
+            let decoded = decode_opus_file(&path).unwrap();
+            let reference = to_device(&decoded, decoded.rate);
+            assert!(reference.len() > 1, "{name} has nothing to loop");
+            let mut source = MusicSource::open(&path, decoded.rate).unwrap();
+            let mut block = [[0.0; 2]; 137];
+            let mut index = 0;
+            while index < reference.len() * 2 + 100 {
+                source.fill(&mut block).unwrap();
+                for frame in block {
+                    assert_eq!(
+                        frame,
+                        reference[index % reference.len()],
+                        "{name} drifted at frame {index}"
+                    );
+                    index += 1;
+                }
             }
         }
     }

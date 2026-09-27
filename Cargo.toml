@@ -1,6 +1,6 @@
 [package]
 name = "beeprs"
-version = "1.0.1"
+version = "1.0.2"
 edition = "2024"
 rust-version = "1.88"
 description = "Minimal Windows audio game used to exercise Freshen updates"
