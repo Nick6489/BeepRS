@@ -1,14 +1,8 @@
-# Packing BeepRS 1.0.3
+# Packing BeepRS
 
-1.0.3 ships two packages of the same build: a portable zip (`files`) and an Inno installer zip (`inno`). Testers can unzip or run setup. 1.0.4 is the mixed-feed update that exercises Freshen for both copies.
+Each release ships two packages of the same build: a portable zip (`files`) and an Inno installer zip (`inno`). Testers can unzip or run setup. 1.0.3 is the first mixed GitHub feed. 1.0.2 cannot check it.
 
 The Inno script is per-user, `PrivilegesRequired=lowest`, AppId `{7B3E9C4A-1F62-4D8E-A5B1-90C2E84F6D17}`, directory `{localappdata}\Programs\BeepRS`. It writes `beeprs-distribution` with the body `inno`. The portable zip must not contain that file.
-
-## 1.0.2 Update
-
-1.0.2 still calls Freshen's legacy `check`. A mixed `files`+`inno` manifest on GitHub makes that call fail. For the 1.0.3 GitHub release, sign a **files-only** manifest so 1.0.2 can still zip-update, and attach `BeepRS-1.0.3.exe` as an extra asset for installer testers. 1.0.3 itself uses `check_for_kind`. Tomorrow's 1.0.4 is the first mixed feed.
-
-Local desk tests can merge both artifacts and point `update-source.json` at that folder.
 
 ## Tools
 
@@ -31,6 +25,6 @@ ISCC:
 ISCC /DAppVersion=1.0.3 /DSourceDir=... /DOutputDir=... /DFreshenInnoDll=...\FreshenInno.dll installer\BeepRS.iss
 ```
 
-Insert notes, then sign. For GitHub 1.0.3, sign the files manifest only. Merge `files.json` and `inno.json` when you want a mixed feed for 1.0.4 or a local test.
+Insert notes, then merge `files.json` and `inno.json`, then sign. 1.0.3 on GitHub is already mixed.
 
 Do not overwrite signed bytes. The private key is `keys/publisher.key`.
