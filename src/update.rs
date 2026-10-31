@@ -41,6 +41,8 @@ pub const OWNED_FILES: &[&str] = &[
     "sounds/die12.opus",
     "sounds/die13.opus",
     "sounds/die14.opus",
+    "sounds/die15.opus",
+    "sounds/die16.opus",
 ];
 
 /// Host-owned directory. Later releases can add sound files here without a
@@ -710,6 +712,8 @@ mod tests {
                 "sounds/die12.opus",
                 "sounds/die13.opus",
                 "sounds/die14.opus",
+                "sounds/die15.opus",
+                "sounds/die16.opus",
             ]
         );
         assert!(OWNED_FILES.iter().all(|path| !path.contains("saves")));

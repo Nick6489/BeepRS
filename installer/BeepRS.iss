@@ -2,7 +2,7 @@
 ; Only the opening brace is doubled. "{{GUID}" is "{GUID}". A second closing
 ; brace is stored in the AppId, and Freshen will not find the uninstall key.
 #ifndef AppVersion
-  #error Define AppVersion, for example /DAppVersion=1.0.5
+  #error Define AppVersion, for example /DAppVersion=1.0.6
 #endif
 #ifndef SourceDir
   #error Define SourceDir to the staged install tree (exe, sounds, marker)
