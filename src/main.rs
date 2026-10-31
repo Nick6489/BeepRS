@@ -2,6 +2,7 @@
 
 mod audio;
 mod dialog;
+mod progress;
 mod save;
 mod ui;
 mod update;
@@ -22,7 +23,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     if freshen::run_helper(std::env::args_os().skip(1))? {
         return Ok(());
     }
+    if progress::run_monitor()? {
+        return Ok(());
+    }
+    progress::initialize()?;
     let _instance = SingleInstance::acquire()?;
+    progress::cleanup();
     dpi_aware();
     let root = install_root()?;
     let kind = update::detect_copy_kind(&root)?;

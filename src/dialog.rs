@@ -21,9 +21,6 @@ const LISTBOX: u16 = 0x0083;
 
 const BS_DEFPUSHBUTTON: u32 = 0x0001;
 const ES_AUTOHSCROLL: u32 = 0x0080;
-const ES_MULTILINE: u32 = 0x0004;
-const ES_READONLY: u32 = 0x0800;
-const ES_AUTOVSCROLL: u32 = 0x0040;
 const LBS_NOTIFY: u32 = 0x0001;
 const LBS_NOINTEGRALHEIGHT: u32 = 0x0100;
 const SS_NOPREFIX: u32 = 0x0080;
@@ -183,38 +180,6 @@ pub fn name_prompt() -> Vec<u8> {
         WS_TABSTOP | BS_DEFPUSHBUTTON,
     );
     dialog.item(BUTTON, "Cancel", IDCANCEL, 74, 46, 60, 16, WS_TABSTOP);
-    dialog.bytes()
-}
-
-pub fn update_prompt() -> Vec<u8> {
-    let mut dialog = Template::dialog("Update BeepRS", 340, 210);
-    dialog.item(
-        EDIT,
-        "",
-        ID_STATUS,
-        8,
-        8,
-        324,
-        148,
-        WS_TABSTOP
-            | WS_BORDER
-            | WS_VSCROLL
-            | ES_MULTILINE
-            | ES_READONLY
-            | ES_AUTOVSCROLL
-            | SS_NOPREFIX,
-    );
-    dialog.item(
-        BUTTON,
-        "&Install and restart",
-        ID_INSTALL,
-        8,
-        166,
-        148,
-        16,
-        WS_TABSTOP,
-    );
-    dialog.item(BUTTON, "&Close", IDCANCEL, 164, 166, 70, 16, WS_TABSTOP);
     dialog.bytes()
 }
 

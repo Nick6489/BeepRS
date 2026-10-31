@@ -275,7 +275,7 @@ pub fn find_release(
     loaded: &LoadedSource,
     kind: CopyKind,
     cancel: &Cancellation,
-    progress: &mut dyn FnMut(String),
+    progress: &mut dyn FnMut(ProgressUpdate),
 ) -> Result<Option<ReleaseOffer>, Box<dyn std::error::Error>> {
     let version = current_version()?;
     let mut reporter = Progress {
@@ -298,7 +298,7 @@ pub fn download_release(
     offer: ReleaseOffer,
     kind: CopyKind,
     cancel: &Cancellation,
-    progress: &mut dyn FnMut(String),
+    progress: &mut dyn FnMut(ProgressUpdate),
 ) -> Result<freshen::PreparedUpdate, Box<dyn std::error::Error>> {
     let version = current_version()?;
     let mut reporter = Progress {
@@ -343,14 +343,21 @@ pub fn install_release(
                     machine_wide: false,
                     enhanced: true,
                     timeout_secs: 1800,
-                    relaunch: true,
+                    relaunch: false, // The progress dialog offers relaunch after success.
                 }),
                 exit_timeout_secs: 120,
                 confirmation_timeout_secs: 120,
             }
         }
     };
-    Ok(prepared.arm_current_exe(policy, Vec::new())?)
+    let handoff = prepared.arm_current_exe(policy, Vec::new())?;
+    if kind == CopyKind::Inno
+        && let Err(error) = crate::progress::launch(&handoff)
+    {
+        handoff.cancel()?;
+        return Err(error);
+    }
+    Ok(handoff)
 }
 
 #[derive(Clone)]
@@ -522,13 +529,27 @@ fn updater<T: Transport>(version: semver::Version, transport: T) -> freshen::Res
     })
 }
 
+pub struct ProgressUpdate {
+    pub text: String,
+    pub percent: Option<u32>,
+}
+
 struct Progress<'a> {
     download_marks: u64,
-    progress: &'a mut dyn FnMut(String),
+    progress: &'a mut dyn FnMut(ProgressUpdate),
 }
 
 impl Progress<'_> {
     fn report(&mut self, event: Event) {
+        let percent = match &event {
+            Event::Downloading {
+                received,
+                total: Some(total),
+            } if *total > 0 => {
+                Some((u128::from(*received) * 100 / u128::from(*total)).min(100) as u32)
+            }
+            _ => None,
+        };
         let line = match event {
             Event::Checking => "Checking for an update.".to_string(),
             Event::Verifying => "Verifying the package.".to_string(),
@@ -536,7 +557,9 @@ impl Progress<'_> {
             Event::Ready => "The update is ready to install.".to_string(),
             Event::Downloading { received, total } => {
                 let mark = match total {
-                    Some(total) if total > 0 => received * 10 / total,
+                    Some(total) if total > 0 => {
+                        (u128::from(received) * 100 / u128::from(total)).min(100) as u64
+                    }
                     _ => received / (256 * 1024),
                 };
                 if mark != self.download_marks || received == total.unwrap_or(0) {
@@ -551,7 +574,10 @@ impl Progress<'_> {
             }
             _ => return,
         };
-        (self.progress)(line);
+        (self.progress)(ProgressUpdate {
+            text: line,
+            percent,
+        });
     }
 }
 
@@ -612,6 +638,36 @@ impl Transport for DirectoryTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn progress_uses_download_bytes_and_resets_for_verification() {
+        let mut updates = Vec::new();
+        let mut callback = |update: ProgressUpdate| updates.push(update);
+        let mut reporter = Progress {
+            download_marks: u64::MAX,
+            progress: &mut callback,
+        };
+        reporter.report(Event::Downloading {
+            received: 25,
+            total: Some(100),
+        });
+        reporter.report(Event::Verifying);
+        reporter.report(Event::Downloading {
+            received: u64::MAX,
+            total: Some(u64::MAX),
+        });
+        reporter.report(Event::Downloading {
+            received: 1,
+            total: None,
+        });
+        assert_eq!(
+            updates
+                .iter()
+                .map(|update| update.percent)
+                .collect::<Vec<_>>(),
+            vec![Some(25), None, Some(100), None]
+        );
+    }
 
     #[test]
     fn publisher_key_is_accepted() {

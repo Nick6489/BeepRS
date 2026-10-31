@@ -526,6 +526,7 @@ unsafe extern "system" fn name_proc(
 
 enum WorkerEvent {
     Status(String),
+    Progress(update::ProgressUpdate),
     Offer { version: String, notes: String },
     Armed(freshen::Handoff),
     Failed(String),
@@ -588,11 +589,10 @@ fn update_dialog(
         outcome: outcome.clone(),
         offered: false,
     });
-    let template = dialog::update_prompt();
     unsafe {
-        DialogBoxIndirectParamW(
+        windows_sys::Win32::UI::WindowsAndMessaging::DialogBoxParamW(
             instance(),
-            template.as_ptr().cast(),
+            crate::progress::UPDATE_DIALOG as usize as *const u16,
             owner,
             Some(update_proc),
             Box::into_raw(state) as LPARAM,
@@ -613,8 +613,8 @@ fn update_worker(
     events: Sender<WorkerEvent>,
     decisions: Receiver<Decision>,
 ) {
-    let mut report = |line: String| {
-        let _ = events.send(WorkerEvent::Status(line));
+    let mut report = |progress: update::ProgressUpdate| {
+        let _ = events.send(WorkerEvent::Progress(progress));
     };
     let offer = match update::find_release(&loaded, kind, &cancel, &mut report) {
         Ok(Some(offer)) => offer,
@@ -648,7 +648,13 @@ fn update_worker(
     }
     match update::install_release(&root, kind, prepared) {
         Ok(handoff) => {
-            let _ = events.send(WorkerEvent::Armed(handoff));
+            if !alive.load(Ordering::Acquire) || cancel.check().is_err() {
+                let _ = handoff.cancel();
+            } else if let Err(mpsc::SendError(WorkerEvent::Armed(handoff))) =
+                events.send(WorkerEvent::Armed(handoff))
+            {
+                let _ = handoff.cancel();
+            }
         }
         Err(error) => {
             let _ = events.send(WorkerEvent::Failed(error.to_string()));
@@ -668,6 +674,7 @@ unsafe extern "system" fn update_proc(
             let state = &*(lparam as *const UpdateState);
             set_status(hwnd, &state.text);
             EnableWindow(GetDlgItem(hwnd, i32::from(ID_INSTALL)), 0);
+            crate::progress::show(hwnd, None, "Checking for updates...");
             SetTimer(hwnd, UPDATE_TIMER, 100, None);
             1
         }
@@ -685,6 +692,7 @@ unsafe extern "system" fn update_proc(
                         EnableWindow(GetDlgItem(hwnd, i32::from(ID_INSTALL)), 0);
                         let _ = state.to_worker.send(Decision::Install);
                         set_status(hwnd, "Downloading the release.");
+                        crate::progress::show(hwnd, None, "Downloading the release...");
                     }
                 }
                 dialog::IDCANCEL => {
@@ -721,12 +729,21 @@ fn pump_update(hwnd: HWND) {
     };
     while let Ok(event) = state.from_worker.try_recv() {
         match event {
+            WorkerEvent::Progress(progress) => {
+                crate::progress::show(hwnd, progress.percent, &progress.text);
+            }
             WorkerEvent::Status(line) => {
+                crate::progress::show(hwnd, Some(0), &line);
                 state.text.push_str("\r\n");
                 state.text.push_str(&line);
                 set_status(hwnd, &state.text);
             }
             WorkerEvent::Offer { version, notes } => {
+                crate::progress::show(
+                    hwnd,
+                    Some(0),
+                    "Update available. Choose Install and restart to continue.",
+                );
                 state.offered = true;
                 state
                     .text
@@ -750,6 +767,7 @@ fn pump_update(hwnd: HWND) {
                 return;
             }
             WorkerEvent::Failed(error) => {
+                crate::progress::show(hwnd, Some(0), &format!("Update failed: {error}"));
                 state.offered = false;
                 state.text.push_str("\r\n");
                 state.text.push_str(&error);
@@ -764,6 +782,13 @@ fn close_update(hwnd: HWND) {
     if let Some(state) = update_from(hwnd) {
         state.alive.store(false, Ordering::Release);
         state.cancel.cancel();
+        while let Ok(event) = state.from_worker.try_recv() {
+            if let WorkerEvent::Armed(handoff) = event {
+                std::thread::spawn(move || {
+                    let _ = handoff.cancel();
+                });
+            }
+        }
     }
     unsafe { EndDialog(hwnd, 0) };
 }

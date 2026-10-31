@@ -83,6 +83,12 @@ The publisher public key is compiled in. The private key is `keys/publisher.key`
 
 Install closes the program. A zip copy lets Freshen replace the files above and start the new build, which has to confirm that it actually started. An installed copy lets Freshen run the new setup after this process exits, then start the new build. Packing both packages is in [installer/README.md](installer/README.md).
 
+The updater has a native progress bar. Download percentages come from Freshen's byte counts; verification and extraction use an animated bar. Installed copies open a separate native progress dialog before the game exits. It uses the same layout as Freshen's former native test app, and follows Freshen's authenticated Inno work counters. Without counters, or while finalizing, it stays indeterminate. Only the installer's actual successful exit establishes completion.
+
+Close is disabled while installation is running. On success, choose **Open updated game**; a reboot-required result asks you to restart Windows first. A failed installer or a helper that disappears without a terminal result is reported without automatically retrying. If the progress dialog cannot become ready, BeepRS cancels the handoff and keeps the current game running. Disposable progress copies live under the user-private servicing directory, outside the installed files, and are cleared on a later normal launch once no longer running.
+
+This UI ships in the new game executable: an older build still uses its old updater when installing this build. The new progress UI is available for subsequent updates initiated from this build. Portable copies keep their existing Freshen replacement and startup-confirmation behavior.
+
 ## Build
 
 BeepRS expects the Freshen crate as a sibling directory, `../freshen`. This is a test host, not a polite library consumer.
@@ -90,6 +96,8 @@ BeepRS expects the Freshen crate as a sibling directory, `../freshen`. This is a
 ```text
 cargo run --bin beeprs
 ```
+
+Building requires the Windows SDK resource compiler (automatically found under Windows Kits 10, or set `RC` to its path). The update dialogs are compiled `DIALOGEX` resources with Common Controls v6.
 
 The installer script is `installer/BeepRS.iss`. It needs Inno Setup 7 and Freshen's `FreshenInno.dll`.
 

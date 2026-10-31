@@ -1,6 +1,7 @@
 use std::{env, fs, path::PathBuf};
 
 fn main() {
+    compile_resources();
     let target = env::var("TARGET").unwrap();
     println!("cargo:rustc-env=BEEPRS_TARGET={target}");
 
@@ -41,4 +42,40 @@ fn main() {
         fs::copy(format!("sounds/{name}"), beside_exe.join(name))
             .unwrap_or_else(|error| panic!("copy sounds/{name}: {error}"));
     }
+}
+
+fn compile_resources() {
+    use std::process::Command;
+    println!("cargo:rerun-if-changed=src/update.rc");
+    println!("cargo:rerun-if-changed=src/update.manifest");
+    println!("cargo:rerun-if-env-changed=RC");
+    let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("update.res");
+    let rc = env::var_os("RC").map(PathBuf::from).unwrap_or_else(|| {
+        let kits =
+            PathBuf::from(env::var_os("ProgramFiles(x86)").expect("Windows SDK is required"))
+                .join("Windows Kits/10/bin");
+        let mut versions: Vec<_> = fs::read_dir(kits)
+            .expect("install Windows SDK or set RC")
+            .filter_map(Result::ok)
+            .map(|entry| entry.path().join("x64/rc.exe"))
+            .filter(|path| path.is_file())
+            .collect();
+        versions.sort();
+        versions
+            .pop()
+            .expect("install Windows SDK or set RC to rc.exe")
+    });
+    let status = Command::new(rc)
+        .arg("/nologo")
+        .arg("/fo")
+        .arg(&output)
+        .arg("src/update.rc")
+        .status()
+        .expect("run Windows resource compiler");
+    assert!(
+        status.success(),
+        "Windows dialog resource compilation failed"
+    );
+    println!("cargo:rustc-link-arg-bin=beeprs={}", output.display());
+    println!("cargo:rustc-link-arg-bin=beeprs=/MANIFEST:NO");
 }

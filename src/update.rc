@@ -1,0 +1,30 @@
+// Native dialog resources; numeric styles keep the build independent of SDK headers.
+201 DIALOGEX 0, 0, 340, 232
+STYLE 0x80C808C0
+CAPTION "Update BeepRS"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Update &details:", -1, 8, 8, 324, 10
+    EDITTEXT 120, 8, 22, 324, 130, 0x00210844
+    LTEXT "&Progress:", -1, 8, 158, 324, 10
+    CONTROL "Update progress", 122, "msctls_progress32", 0x50000008, 8, 172, 324, 13
+    LTEXT "Checking for updates...", 123, 8, 189, 324, 12
+    DEFPUSHBUTTON "&Install and restart", 121, 8, 208, 148, 16
+    PUSHBUTTON "&Close", 2, 164, 208, 70, 16
+END
+
+202 DIALOGEX 0, 0, 330, 177
+STYLE 0x80C808C0
+CAPTION "Installing BeepRS update"
+FONT 9, "Segoe UI"
+BEGIN
+    LTEXT "Updating BeepRS", -1, 12, 10, 305, 14
+    LTEXT "&Status:", -1, 12, 34, 300, 12
+    EDITTEXT 123, 12, 48, 306, 42, 0x00210844
+    LTEXT "Installation &work:", -1, 12, 99, 300, 12
+    CONTROL "Installation work", 122, "msctls_progress32", 0x50000008, 12, 114, 306, 13
+    DEFPUSHBUTTON "&Open updated game", 124, 100, 143, 116, 22, 0x08000000
+    PUSHBUTTON "&Close", 2, 222, 143, 96, 22, 0x08000000
+END
+
+1 24 "src/update.manifest"
