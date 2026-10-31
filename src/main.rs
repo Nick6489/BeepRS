@@ -25,10 +25,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let _instance = SingleInstance::acquire()?;
     dpi_aware();
     let root = install_root()?;
+    let kind = update::detect_copy_kind(&root)?;
     let audio = audio::Audio::open(root.join("sounds"))?;
-    let report = update::acknowledge_installation(&root)?;
-    let library = save::Library::open(root.join("saves"))?;
-    let handoff = ui::run(root, audio, library, report)?;
+    let report = update::acknowledge_installation(&root, kind)?;
+    let library = save::Library::open(update::saves_dir(&root, kind)?)?;
+    let handoff = ui::run(root, kind, audio, library, report)?;
     drop(handoff);
     Ok(())
 }

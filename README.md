@@ -2,7 +2,7 @@
 
 Beep, the audio game Liam Erven made small enough to explain in one sentence, now wearing a Windows dialog box and an updater with a clipboard.
 
-A beep plays until you press Space. One of nine death sounds plays. The beep comes back. There is no timer, no score attack, and no plot. The score is how many aliens you have removed from the premises, and it is saved, because the updater is not allowed to eat it. The count is on the menu when you come back. The play window does not repeat it.
+A beep plays until you press Space. One of eleven death sounds plays. The beep comes back. There is no timer, no score attack, and no plot. The score is how many aliens you have removed from the premises, and it is saved, because the updater is not allowed to eat it. The count is on the menu when you come back. The play window does not repeat it.
 
 ## Play
 
@@ -17,15 +17,15 @@ A new game plays `intro.opus` by itself. That file is the instruction manual. Sp
 
 ## Download
 
-The Windows build is a zip. Unzip it and run `beeprs.exe`. There is no installer. An installer would be a second program, and this one is already doing enough.
+The Windows build is a zip and an installer. Unzip the zip and run `beeprs.exe`, or run setup and let it put BeepRS in your user Programs folder. Both copies are the same game. They ask GitHub for different packages when they update.
 
-[BeepRS 1.0.2 for Windows](https://github.com/Nick6489/BeepRS/releases/tag/v1.0.2)
+[BeepRS 1.0.3 for Windows](https://github.com/Nick6489/BeepRS/releases/tag/v1.0.3)
 
 ## What an update is allowed to replace
 
-These thirteen files are permanent residents. Every later package has to bring them. The updater cannot fire one.
+These fifteen files are permanent residents. Every later package has to bring them. The updater cannot fire one.
 
-It may bring friends, if they stand in the `sounds/` hallway. A tenth death, a ruder beep, a longer lecture: a signed file under `sounds/` is welcome, and version 1.0 will install it. A file in the lobby, or a hand in the saves drawer, is still shown out.
+It may bring friends, if they stand in the `sounds/` hallway. A twelfth death, a ruder beep, a longer lecture: a signed file under `sounds/` is welcome, and version 1.0 will install it. A file in the lobby, or a hand in the saves drawer, is still shown out.
 
 | File | Role |
 | --- | --- |
@@ -42,15 +42,19 @@ It may bring friends, if they stand in the `sounds/` hallway. A tenth death, a r
 | `sounds/die7.opus` | A seventh death. |
 | `sounds/die8.opus` | An eighth death. |
 | `sounds/die9.opus` | A ninth death. |
+| `sounds/die10.opus` | A tenth death. |
+| `sounds/die11.opus` | An eleventh death. |
 
 The sounds are Opus because WAV was hauling around a lot of silence.
 
 ## What an update must leave alone
 
-These live beside the program and are not in the signed package:
+These are not in the signed portable package:
 
-- `saves\*.json`, one file per game, with the name and the alien count.
-- `update-source.json`, which is where this copy looks for a release.
+- `saves\*.json` for a zip copy, beside the program, one file per game, with the name and the alien count.
+- `%LOCALAPPDATA%\BeepRS\saves\*.json` for an installed copy, so uninstalling the game does not throw out the aliens you already removed.
+- `update-source.json`, beside the program, which is where this copy looks for a release.
+- `beeprs-distribution`, which only the installer writes. The zip does not ship it. It tells this copy it was installed, so it asks for the Inno package.
 
 ## Checking for an update
 
@@ -70,11 +74,11 @@ Two shapes work:
 
 A directory release contains `freshen-manifest.json`, `freshen-manifest.json.sig`, and the zip. The zip's file name is the last part of the URL stored in the manifest.
 
-This build calls itself `beeprs`, version `1.0.2`, channel `stable`, target `x86_64-pc-windows-msvc` when built with the usual Windows toolchain. The target string in the dialog is the one the binary was actually built for. Pack with that string, not with a guess.
+This build calls itself `beeprs`, version `1.0.3`, channel `stable`, target `x86_64-pc-windows-msvc` when built with the usual Windows toolchain. The target string in the dialog is the one the binary was actually built for. Pack with that string, not with a guess. A zip copy asks for a `files` artifact. An installed copy asks for an `inno` artifact. The dialog says which copy you are.
 
 The publisher public key is compiled in. The private key is `keys/publisher.key` on the machine that signs releases, and it is not in this repository. If you came here looking for it, the door is that way.
 
-Install closes the program. Freshen's helper then replaces the files above and starts the new build. The new build has to confirm that it actually started. If it never does, the helper keeps the evidence and can roll the installation back.
+Install closes the program. A zip copy lets Freshen replace the files above and start the new build, which has to confirm that it actually started. An installed copy lets Freshen run the new setup after this process exits, then start the new build. Packing both packages is in [installer/README.md](installer/README.md).
 
 ## Build
 
@@ -83,5 +87,7 @@ BeepRS expects the Freshen crate as a sibling directory, `../freshen`. This is a
 ```text
 cargo run --bin beeprs
 ```
+
+The installer script is `installer/BeepRS.iss`. It needs Inno Setup 7 and Freshen's `FreshenInno.dll`.
 
 Windows is the platform this is being exercised on. The dialogs are ordinary Win32 dialogs. The game window is an ordinary overlapped window. Nobody was harmed in the making of a GPU.

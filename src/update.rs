@@ -1,11 +1,12 @@
+use freshen::inno::InnoPolicy;
 use freshen::{
-    Cancellation, Error, Event, HttpTransport, InstallPolicy, InstallState, ReleaseSource,
-    Transport, TrustStore, Updater,
+    Cancellation, Error, Event, HttpTransport, InstallLayout, InstallPolicy, InstallState,
+    PackageKind, ReleaseSource, Transport, TrustStore, Updater,
 };
 use serde::Deserialize;
 use std::{
     fs::{self, File},
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::{Path, PathBuf},
     thread,
     time::{Duration, Instant},
@@ -35,6 +36,8 @@ pub const OWNED_FILES: &[&str] = &[
     "sounds/die7.opus",
     "sounds/die8.opus",
     "sounds/die9.opus",
+    "sounds/die10.opus",
+    "sounds/die11.opus",
 ];
 
 /// Host-owned directory. Later releases can add sound files here without a
@@ -50,6 +53,75 @@ pub const PUBLISHER_KEY: [u8; 32] = [
 
 const MANIFEST_NAME: &str = "freshen-manifest.json";
 const SIGNATURE_NAME: &str = "freshen-manifest.json.sig";
+/// Written by the Inno installer. The portable zip does not ship this file.
+pub const DISTRIBUTION_MARKER: &str = "beeprs-distribution";
+const INNO_MARKER: &str = "inno";
+/// Keep in sync with AppId in installer/BeepRS.iss, including the braces.
+pub const APP_ID: &str = "{7B3E9C4A-1F62-4D8E-A5B1-90C2E84F6D17}";
+const INNO_SETUP: &str = "setup.exe";
+
+/// How this running copy was deployed. Taken from a local marker, never from a
+/// download or from another copy's uninstall registration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CopyKind {
+    Portable,
+    Inno,
+}
+
+impl CopyKind {
+    pub fn package_kind(self) -> PackageKind {
+        match self {
+            Self::Portable => PackageKind::Files,
+            Self::Inno => PackageKind::Inno,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Portable => "portable",
+            Self::Inno => "installed",
+        }
+    }
+}
+
+pub fn detect_copy_kind(root: &Path) -> io::Result<CopyKind> {
+    let path = root.join(DISTRIBUTION_MARKER);
+    if !path.is_file() {
+        return Ok(CopyKind::Portable);
+    }
+    let text = fs::read_to_string(&path)?;
+    match text.trim() {
+        INNO_MARKER => Ok(CopyKind::Inno),
+        other => Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("unknown distribution in {DISTRIBUTION_MARKER}: {other}"),
+        )),
+    }
+}
+
+pub fn product_data_dir() -> io::Result<PathBuf> {
+    let local = std::env::var_os("LOCALAPPDATA")
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "LOCALAPPDATA is not set"))?;
+    Ok(PathBuf::from(local).join("BeepRS"))
+}
+
+pub fn servicing_root() -> io::Result<PathBuf> {
+    Ok(product_data_dir()?.join("servicing"))
+}
+
+pub fn saves_dir(root: &Path, kind: CopyKind) -> io::Result<PathBuf> {
+    match kind {
+        CopyKind::Portable => Ok(root.join("saves")),
+        CopyKind::Inno => Ok(product_data_dir()?.join("saves")),
+    }
+}
+
+fn state_root(root: &Path, kind: CopyKind) -> io::Result<PathBuf> {
+    match kind {
+        CopyKind::Portable => Ok(root.to_path_buf()),
+        CopyKind::Inno => servicing_root(),
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
@@ -70,12 +142,16 @@ pub struct ReleaseOffer {
     loaded: LoadedSource,
 }
 
-pub fn acknowledge_installation(root: &Path) -> freshen::Result<StartupReport> {
+pub fn acknowledge_installation(root: &Path, kind: CopyKind) -> freshen::Result<StartupReport> {
     let mut report = StartupReport {
         lines: Vec::new(),
         needs_attention: false,
     };
-    match freshen::confirm_startup(root) {
+    let state = state_root(root, kind)?;
+    if kind == CopyKind::Inno {
+        fs::create_dir_all(&state)?;
+    }
+    match freshen::confirm_startup(&state) {
         Ok(true) => report
             .lines
             .push("Startup confirmed for this update.".into()),
@@ -90,7 +166,7 @@ pub fn acknowledge_installation(root: &Path) -> freshen::Result<StartupReport> {
 
     let deadline = Instant::now() + Duration::from_secs(3);
     let status = loop {
-        let status = freshen::installation_status(root)?;
+        let status = freshen::installation_status(&state)?;
         let still_waiting = status
             .as_ref()
             .is_some_and(|status| status.state == InstallState::AwaitingConfirmation)
@@ -111,8 +187,11 @@ pub fn acknowledge_installation(root: &Path) -> freshen::Result<StartupReport> {
         status.detail
     ));
     match status.state {
-        InstallState::Committed | InstallState::RolledBack | InstallState::Prepared => {
-            if let Some(line) = discard_when_free(root, deadline)? {
+        InstallState::Committed
+        | InstallState::RolledBack
+        | InstallState::Prepared
+        | InstallState::RebootRequired => {
+            if let Some(line) = discard_when_free(&state, deadline)? {
                 report.lines.push(line);
             }
         }
@@ -123,7 +202,7 @@ pub fn acknowledge_installation(root: &Path) -> freshen::Result<StartupReport> {
             report.needs_attention = true;
             report.lines.push(format!(
                 "Quit BeepRS, then recover with: freshen-release recover {}",
-                root.display()
+                state.display()
             ));
         }
     }
@@ -156,6 +235,7 @@ fn state_label(state: &InstallState) -> &'static str {
         InstallState::RollingBack => "rolling back",
         InstallState::RolledBack => "rolled back",
         InstallState::Failed => "failed",
+        InstallState::RebootRequired => "reboot required",
     }
 }
 
@@ -163,10 +243,11 @@ pub fn current_version() -> Result<semver::Version, semver::Error> {
     env!("CARGO_PKG_VERSION").parse()
 }
 
-pub fn identity_line() -> String {
+pub fn identity_line(kind: CopyKind) -> String {
     format!(
-        "This is {PRODUCT} {} for {TARGET}, channel {CHANNEL}.",
-        env!("CARGO_PKG_VERSION")
+        "This is {PRODUCT} {} for {TARGET}, channel {CHANNEL}, {}.",
+        env!("CARGO_PKG_VERSION"),
+        kind.label()
     )
 }
 
@@ -188,6 +269,7 @@ pub fn missing_source_message(root: &Path) -> String {
 
 pub fn find_release(
     loaded: &LoadedSource,
+    kind: CopyKind,
     cancel: &Cancellation,
     progress: &mut dyn FnMut(String),
 ) -> Result<Option<ReleaseOffer>, Box<dyn std::error::Error>> {
@@ -196,7 +278,7 @@ pub fn find_release(
         download_marks: u64::MAX,
         progress,
     };
-    let Some(candidate) = find_candidate(loaded, version, cancel, &mut reporter)? else {
+    let Some(candidate) = find_candidate(loaded, version, kind, cancel, &mut reporter)? else {
         return Ok(None);
     };
     let release = candidate.release();
@@ -210,6 +292,7 @@ pub fn find_release(
 
 pub fn download_release(
     offer: ReleaseOffer,
+    kind: CopyKind,
     cancel: &Cancellation,
     progress: &mut dyn FnMut(String),
 ) -> Result<freshen::PreparedUpdate, Box<dyn std::error::Error>> {
@@ -221,6 +304,7 @@ pub fn download_release(
     prepare_candidate(
         &offer.loaded,
         version,
+        kind,
         offer.candidate,
         cancel,
         &mut reporter,
@@ -229,18 +313,40 @@ pub fn download_release(
 
 pub fn install_release(
     root: &Path,
+    kind: CopyKind,
     prepared: freshen::PreparedUpdate,
 ) -> Result<freshen::Handoff, Box<dyn std::error::Error>> {
-    let policy = InstallPolicy::portable_expanding(
-        root.to_path_buf(),
-        EXECUTABLE.to_string(),
-        OWNED_FILES.iter().map(|path| (*path).to_string()).collect(),
-        EXPANDABLE_DIRECTORIES
-            .iter()
-            .map(|path| (*path).to_string())
-            .collect(),
-    );
-    Ok(prepared.arm(policy, &std::env::current_exe()?, Vec::new())?)
+    let policy = match kind {
+        CopyKind::Portable => InstallPolicy::portable_expanding(
+            root.to_path_buf(),
+            EXECUTABLE.to_string(),
+            OWNED_FILES.iter().map(|path| (*path).to_string()).collect(),
+            EXPANDABLE_DIRECTORIES
+                .iter()
+                .map(|path| (*path).to_string())
+                .collect(),
+        ),
+        CopyKind::Inno => {
+            let servicing = servicing_root()?;
+            fs::create_dir_all(&servicing)?;
+            InstallPolicy {
+                root: servicing,
+                layout: InstallLayout::Inno(InnoPolicy {
+                    installer: INNO_SETUP.into(),
+                    app_id: APP_ID.into(),
+                    directory: root.to_path_buf(),
+                    executable: EXECUTABLE.to_string(),
+                    machine_wide: false,
+                    enhanced: true,
+                    timeout_secs: 1800,
+                    relaunch: true,
+                }),
+                exit_timeout_secs: 120,
+                confirmation_timeout_secs: 120,
+            }
+        }
+    };
+    Ok(prepared.arm_current_exe(policy, Vec::new())?)
 }
 
 #[derive(Clone)]
@@ -292,9 +398,11 @@ fn read_source(root: &Path) -> Result<LoadedSource, Box<dyn std::error::Error>> 
 fn find_candidate(
     loaded: &LoadedSource,
     version: semver::Version,
+    kind: CopyKind,
     cancel: &Cancellation,
     progress: &mut Progress<'_>,
 ) -> Result<Option<freshen::Candidate>, Box<dyn std::error::Error>> {
+    let package = kind.package_kind();
     match loaded {
         LoadedSource::GitHub => {
             let updater = updater(version, HttpTransport::new(Duration::from_secs(120))?)?;
@@ -302,7 +410,11 @@ fn find_candidate(
                 owner: GITHUB_OWNER.into(),
                 repository: GITHUB_REPOSITORY.into(),
             };
-            Ok(updater.check(&source, cancel, &mut |event| progress.report(event))?)
+            Ok(
+                updater.check_for_kind(&source, package, cancel, &mut |event| {
+                    progress.report(event)
+                })?,
+            )
         }
         LoadedSource::Directory(directory) => {
             let updater = updater(
@@ -312,7 +424,11 @@ fn find_candidate(
                 },
             )?;
             let source = local_manifest_source()?;
-            Ok(updater.check(&source, cancel, &mut |event| progress.report(event))?)
+            Ok(
+                updater.check_for_kind(&source, package, cancel, &mut |event| {
+                    progress.report(event)
+                })?,
+            )
         }
         LoadedSource::Manifest(manifest, signature) => {
             let updater = updater(version, HttpTransport::new(Duration::from_secs(120))?)?;
@@ -320,7 +436,22 @@ fn find_candidate(
                 document: manifest.clone(),
                 signature: signature.clone(),
             };
-            Ok(updater.check(&source, cancel, &mut |event| progress.report(event))?)
+            Ok(
+                updater.check_for_kind(&source, package, cancel, &mut |event| {
+                    progress.report(event)
+                })?,
+            )
+        }
+    }
+}
+
+fn prepare_parent(kind: CopyKind) -> io::Result<PathBuf> {
+    match kind {
+        CopyKind::Portable => Ok(std::env::temp_dir()),
+        CopyKind::Inno => {
+            let root = servicing_root()?;
+            fs::create_dir_all(&root)?;
+            Ok(root)
         }
     }
 }
@@ -328,11 +459,12 @@ fn find_candidate(
 fn prepare_candidate(
     loaded: &LoadedSource,
     version: semver::Version,
+    kind: CopyKind,
     candidate: freshen::Candidate,
     cancel: &Cancellation,
     progress: &mut Progress<'_>,
 ) -> Result<freshen::PreparedUpdate, Box<dyn std::error::Error>> {
-    let temporary = std::env::temp_dir();
+    let temporary = prepare_parent(kind)?;
     match loaded {
         LoadedSource::GitHub => {
             let updater = updater(version, HttpTransport::new(Duration::from_secs(120))?)?;
@@ -513,11 +645,40 @@ mod tests {
                 "sounds/die7.opus",
                 "sounds/die8.opus",
                 "sounds/die9.opus",
+                "sounds/die10.opus",
+                "sounds/die11.opus",
             ]
         );
         assert!(OWNED_FILES.iter().all(|path| !path.contains("saves")));
         assert!(OWNED_FILES.iter().all(|path| *path != "update-source.json"));
+        assert!(
+            !OWNED_FILES.contains(&DISTRIBUTION_MARKER),
+            "the installer marker is not a portable owned file"
+        );
         assert_eq!(EXPANDABLE_DIRECTORIES, ["sounds"]);
+    }
+
+    #[test]
+    fn missing_marker_is_portable() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(detect_copy_kind(dir.path()).unwrap(), CopyKind::Portable);
+    }
+
+    #[test]
+    fn inno_marker_selects_the_installer_kind() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(DISTRIBUTION_MARKER), "inno\n").unwrap();
+        assert_eq!(detect_copy_kind(dir.path()).unwrap(), CopyKind::Inno);
+        assert_eq!(CopyKind::Inno.package_kind(), PackageKind::Inno);
+        assert_eq!(CopyKind::Portable.package_kind(), PackageKind::Files);
+    }
+
+    #[test]
+    fn unknown_marker_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(DISTRIBUTION_MARKER), "mystery").unwrap();
+        let error = detect_copy_kind(dir.path()).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]

@@ -43,6 +43,7 @@ const VK_SPACE: u16 = 0x20;
 
 struct Shell {
     root: std::path::PathBuf,
+    kind: update::CopyKind,
     audio: Audio,
     library: Library,
     games: Vec<Game>,
@@ -51,6 +52,7 @@ struct Shell {
 
 pub fn run(
     root: std::path::PathBuf,
+    kind: update::CopyKind,
     audio: Audio,
     library: Library,
     report: StartupReport,
@@ -63,6 +65,7 @@ pub fn run(
     let installed = Arc::new(Mutex::new(None));
     let shell = Box::new(Shell {
         root,
+        kind,
         audio,
         library,
         games,
@@ -126,7 +129,8 @@ unsafe extern "system" fn main_proc(
                 ID_UPDATE => {
                     if let Some(shell) = shell_from(hwnd) {
                         let root = shell.root.clone();
-                        if let Some(handoff) = update_dialog(hwnd, &root) {
+                        let kind = shell.kind;
+                        if let Some(handoff) = update_dialog(hwnd, &root, kind) {
                             *shell
                                 .installed
                                 .lock()
@@ -541,7 +545,11 @@ struct UpdateState {
     offered: bool,
 }
 
-fn update_dialog(owner: HWND, root: &std::path::Path) -> Option<freshen::Handoff> {
+fn update_dialog(
+    owner: HWND,
+    root: &std::path::Path,
+    kind: update::CopyKind,
+) -> Option<freshen::Handoff> {
     let loaded = match update::load_source(root) {
         Ok(loaded) => loaded,
         Err(error) => {
@@ -562,6 +570,7 @@ fn update_dialog(owner: HWND, root: &std::path::Path) -> Option<freshen::Handoff
     std::thread::spawn(move || {
         update_worker(
             worker_root,
+            kind,
             loaded,
             worker_cancel,
             worker_alive,
@@ -571,7 +580,7 @@ fn update_dialog(owner: HWND, root: &std::path::Path) -> Option<freshen::Handoff
     });
     let outcome = Arc::new(Mutex::new(None));
     let state = Box::new(UpdateState {
-        text: update::identity_line(),
+        text: update::identity_line(kind),
         from_worker: event_rx,
         to_worker: decision_tx,
         cancel,
@@ -597,6 +606,7 @@ fn update_dialog(owner: HWND, root: &std::path::Path) -> Option<freshen::Handoff
 
 fn update_worker(
     root: std::path::PathBuf,
+    kind: update::CopyKind,
     loaded: update::LoadedSource,
     cancel: Cancellation,
     alive: Arc<AtomicBool>,
@@ -606,7 +616,7 @@ fn update_worker(
     let mut report = |line: String| {
         let _ = events.send(WorkerEvent::Status(line));
     };
-    let offer = match update::find_release(&loaded, &cancel, &mut report) {
+    let offer = match update::find_release(&loaded, kind, &cancel, &mut report) {
         Ok(Some(offer)) => offer,
         Ok(None) => {
             let _ = events.send(WorkerEvent::Status(
@@ -626,7 +636,7 @@ fn update_worker(
     if !matches!(decisions.recv(), Ok(Decision::Install)) || !alive.load(Ordering::Acquire) {
         return;
     }
-    let prepared = match update::download_release(offer, &cancel, &mut report) {
+    let prepared = match update::download_release(offer, kind, &cancel, &mut report) {
         Ok(prepared) => prepared,
         Err(error) => {
             let _ = events.send(WorkerEvent::Failed(error.to_string()));
@@ -636,7 +646,7 @@ fn update_worker(
     if !alive.load(Ordering::Acquire) || cancel.check().is_err() {
         return;
     }
-    match update::install_release(&root, prepared) {
+    match update::install_release(&root, kind, prepared) {
         Ok(handoff) => {
             let _ = events.send(WorkerEvent::Armed(handoff));
         }
