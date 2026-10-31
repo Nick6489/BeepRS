@@ -15,16 +15,16 @@ The Inno script is per-user, `PrivilegesRequired=lowest`, AppId `{7B3E9C4A-1F62-
 Stage a portable tree (exe and `sounds/` only) and an installer tree (that plus `installer/beeprs-distribution`). Compile setup, rename it to `setup.exe` inside a payload folder, then:
 
 ```text
-freshen-release pack portable-dist beeprs-1.0.3-x86_64-pc-windows-msvc.zip https://github.com/Nick6489/BeepRS/releases/download/v1.0.3/beeprs-1.0.3-x86_64-pc-windows-msvc.zip x86_64-pc-windows-msvc files beeprs 1.0.3 stable files.json
-freshen-release pack inno-payload beeprs-1.0.3-inno.zip https://github.com/Nick6489/BeepRS/releases/download/v1.0.3/beeprs-1.0.3-inno.zip x86_64-pc-windows-msvc inno beeprs 1.0.3 stable inno.json
+freshen-release pack portable-dist beeprs-1.0.4-x86_64-pc-windows-msvc.zip https://github.com/Nick6489/BeepRS/releases/download/v1.0.4/beeprs-1.0.4-x86_64-pc-windows-msvc.zip x86_64-pc-windows-msvc files beeprs 1.0.4 stable files.json
+freshen-release pack inno-payload beeprs-1.0.4-inno.zip https://github.com/Nick6489/BeepRS/releases/download/v1.0.4/beeprs-1.0.4-inno.zip x86_64-pc-windows-msvc inno beeprs 1.0.4 stable inno.json
 ```
 
 ISCC:
 
 ```text
-ISCC /DAppVersion=1.0.3 /DSourceDir=... /DOutputDir=... /DFreshenInnoDll=...\FreshenInno.dll installer\BeepRS.iss
+ISCC /DAppVersion=1.0.4 /DSourceDir=... /DOutputDir=... /DFreshenInnoDll=...\FreshenInno.dll installer\BeepRS.iss
 ```
 
-Insert notes, then merge `files.json` and `inno.json`, then sign. 1.0.3 on GitHub is already mixed.
+Insert notes, then merge `files.json` and `inno.json`, then sign. Keep publishing the mixed feed. 1.0.3 was the first one, and 1.0.2 still cannot check it.
 
 Do not overwrite signed bytes. The private key is `keys/publisher.key`.

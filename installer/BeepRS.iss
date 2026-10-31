@@ -1,6 +1,6 @@
 ; Keep AppId in sync with src/update.rs APP_ID, including the braces.
 #ifndef AppVersion
-  #error Define AppVersion, for example /DAppVersion=1.0.3
+  #error Define AppVersion, for example /DAppVersion=1.0.4
 #endif
 #ifndef SourceDir
   #error Define SourceDir to the staged install tree (exe, sounds, marker)

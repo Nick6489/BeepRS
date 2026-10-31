@@ -15,7 +15,7 @@ const BEEP: usize = 0;
 const BED: usize = 1;
 const INTRO: usize = 2;
 const DIE_FIRST: usize = 3;
-const DIE_COUNT: usize = 11;
+const DIE_COUNT: usize = 14;
 const _: () = assert!(DIE_FIRST + DIE_COUNT == CLIP_NAMES.len());
 /// The bed is eight bars of 4/4. Dividing the loop into these beats keeps the
 /// beep on the record; 140 BPM is not a whole number of samples.
@@ -36,6 +36,9 @@ const CLIP_NAMES: &[&str] = &[
     "die9.opus",
     "die10.opus",
     "die11.opus",
+    "die12.opus",
+    "die13.opus",
+    "die14.opus",
 ];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
