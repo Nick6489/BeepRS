@@ -17,9 +17,9 @@ A new game plays `intro.opus` by itself. That file is the instruction manual. Sp
 
 ## Download
 
-The Windows build is a zip and an installer. Unzip the zip and run `beeprs.exe`, or run setup and let it put BeepRS in your user Programs folder. Both copies are the same game. They ask GitHub for different packages when they update.
+The Windows build is a zip and an installer. Unzip the zip and run `beeprs.exe`, or run setup and let it put BeepRS in your user Programs folder. Both copies are the same game. They ask GitHub for different packages when they update. Installed copies of 1.0.3 and 1.0.4 have to run the installer. Update will not move them.
 
-[BeepRS 1.0.4 for Windows](https://github.com/Nick6489/BeepRS/releases/tag/v1.0.4)
+[BeepRS 1.0.5 for Windows](https://github.com/Nick6489/BeepRS/releases/tag/v1.0.5)
 
 ## What an update is allowed to replace
 
@@ -77,7 +77,7 @@ Two shapes work:
 
 A directory release contains `freshen-manifest.json`, `freshen-manifest.json.sig`, and the zip. The zip's file name is the last part of the URL stored in the manifest.
 
-This build calls itself `beeprs`, version `1.0.4`, channel `stable`, target `x86_64-pc-windows-msvc` when built with the usual Windows toolchain. The target string in the dialog is the one the binary was actually built for. Pack with that string, not with a guess. A zip copy asks for a `files` artifact. An installed copy asks for an `inno` artifact. The dialog says which copy you are.
+This build calls itself `beeprs`, version `1.0.5`, channel `stable`, target `x86_64-pc-windows-msvc` when built with the usual Windows toolchain. The target string in the dialog is the one the binary was actually built for. Pack with that string, not with a guess. A zip copy asks for a `files` artifact. An installed copy asks for an `inno` artifact. The dialog says which copy you are.
 
 The publisher public key is compiled in. The private key is `keys/publisher.key` on the machine that signs releases, and it is not in this repository. If you came here looking for it, the door is that way.
 

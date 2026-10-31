@@ -60,6 +60,7 @@ const SIGNATURE_NAME: &str = "freshen-manifest.json.sig";
 pub const DISTRIBUTION_MARKER: &str = "beeprs-distribution";
 const INNO_MARKER: &str = "inno";
 /// Keep in sync with AppId in installer/BeepRS.iss, including the braces.
+/// The script doubles only the opening brace. This value is the expanded AppId.
 pub const APP_ID: &str = "{7B3E9C4A-1F62-4D8E-A5B1-90C2E84F6D17}";
 const INNO_SETUP: &str = "setup.exe";
 
